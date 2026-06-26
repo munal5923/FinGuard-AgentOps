@@ -1,0 +1,33 @@
+# Environment
+.env
+.env.*
+!.env.example
+.venv/
+__pycache__/
+*.pyc
+.fin_venv/
+fin_venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Data
+*.db
+chroma_data/
+mlruns/
+
+# Build
+dist/
+build/
+*.egg-info/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test artifacts
+red_team/promptfoo_config/results.json
+red_team/promptfoo_config/.promptfoo/
+tests/
