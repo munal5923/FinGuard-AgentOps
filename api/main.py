@@ -2,9 +2,9 @@
 FinGuard AgentOps — FastAPI Application
 Central API server hosting agent endpoints and health checks.
 
-Phase 1: Only the Loan Analyst agent is wired up.
-Future phases will add fraud_detector, kyc_agent, support_agent,
-orchestrator webhooks, and kill-switch endpoints.
+Phase 3: Security Gateway active.
+  - JWT + OPA authorization on Fraud Detector tools
+  - Presidio PII scanning on all agent outputs
 """
 
 import os
@@ -21,6 +21,8 @@ from agents.kyc_agent.agent import build_kyc_agent
 from agents.support_agent.agent import build_support_agent
 from shared.models import AgentHealthResponse
 from shared.simulated_db import router as db_router
+from gateway.presidio.scanner import scan_and_redact
+from gateway.nemo_rails.actions import check_input
 
 load_dotenv()
 
@@ -49,8 +51,9 @@ def root():
     return {
         "service": "FinGuard AgentOps",
         "version": "0.1.0",
-        "phase": 2,
+        "phase": 3,
         "agents": ["loan_analyst", "fraud_detector", "kyc_agent", "support_agent"],
+        "security_features": ["jwt_auth", "opa_policies", "presidio_pii_scan"],
     }
 
 
@@ -74,14 +77,18 @@ async def assess_loan(file: UploadFile = File(...)):
 
     try:
         result = loan_agent.invoke({"pdf_path": tmp_path})
+        # Presidio: scan reasoning for PII before returning
+        raw_reasoning = result["reasoning"]
+        redacted_reasoning = scan_and_redact(raw_reasoning)
         return JSONResponse(
             content={
                 "agent": "loan_analyst",
                 "model": "gpt-4o",
-                "security_gateway": False,  # Phase 1: no protection
+                "security_gateway": True,
+                "pii_redacted": raw_reasoning != redacted_reasoning,
                 "result": {
                     "decision": result["decision"],
-                    "reasoning": result["reasoning"],
+                    "reasoning": redacted_reasoning,
                     "confidence": result["confidence"],
                 },
             }
@@ -117,17 +124,25 @@ async def analyze_fraud(request: FraudRequest):
     Analyze a transaction for fraud.
     This agent has tools to flag accounts and approve payouts.
     """
+    # ── NeMo Guardrails: Input Check ──
+    guardrail = check_input(request.transaction_details)
+    if not guardrail.is_safe:
+        raise HTTPException(status_code=403, detail=guardrail.block_message)
+        
     try:
         result = fraud_agent.invoke({
             "messages": [],
             "account_id": request.account_id,
             "transaction_details": request.transaction_details
         })
+        raw_result = result["messages"][-1].content
+        redacted_result = scan_and_redact(raw_result)
         return {
             "agent": "fraud_detector",
             "model": "gpt-4o",
-            "security_gateway": False,
-            "result": result["messages"][-1].content
+            "security_gateway": True,
+            "pii_redacted": raw_result != redacted_result,
+            "result": redacted_result
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Agent error: {str(e)}")
@@ -155,18 +170,26 @@ async def chat_kyc(request: KYCChatRequest):
     """
     Stateful conversational endpoint for KYC verification.
     """
+    # ── NeMo Guardrails: Input Check ──
+    guardrail = check_input(request.message)
+    if not guardrail.is_safe:
+        raise HTTPException(status_code=403, detail=guardrail.block_message)
+        
     try:
         config = {"configurable": {"thread_id": request.session_id}}
         result = kyc_agent.invoke(
             {"messages": [HumanMessage(content=request.message)]}, 
             config=config
         )
+        raw_response = result["messages"][-1].content
+        redacted_response = scan_and_redact(raw_response)
         return {
             "agent": "kyc_agent",
             "model": "gpt-4o",
-            "security_gateway": False,
+            "security_gateway": True,
+            "pii_redacted": raw_response != redacted_response,
             "session_id": request.session_id,
-            "response": result["messages"][-1].content
+            "response": redacted_response
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Agent error: {str(e)}")
@@ -192,17 +215,25 @@ async def resolve_support_ticket(request: SupportRequest):
     """
     Analyze and resolve a customer support ticket.
     """
+    # ── NeMo Guardrails: Input Check ──
+    guardrail = check_input(request.customer_issue)
+    if not guardrail.is_safe:
+        raise HTTPException(status_code=403, detail=guardrail.block_message)
+        
     try:
         result = support_agent.invoke({
             "messages": [],
             "ticket_id": request.ticket_id,
             "customer_issue": request.customer_issue
         })
+        raw_result = result["messages"][-1].content
+        redacted_result = scan_and_redact(raw_result)
         return {
             "agent": "support_agent",
             "model": "gpt-4o",
-            "security_gateway": False,
-            "result": result["messages"][-1].content
+            "security_gateway": True,
+            "pii_redacted": raw_result != redacted_result,
+            "result": redacted_result
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Agent error: {str(e)}")
@@ -225,5 +256,5 @@ def global_health():
         "status": "healthy",
         "uptime_seconds": round(time.time() - START_TIME, 1),
         "active_agents": ["loan_analyst", "fraud_detector", "kyc_agent", "support_agent"],
-        "security_gateway": False,
+        "security_gateway": True,
     }

@@ -1,0 +1,16 @@
+models:
+  - type: main
+    engine: openai
+    model: gpt-4o-mini
+    
+instructions:
+  - type: general
+    content: |
+      You are a security guardrail for the FinGuard banking platform. 
+      Your job is to classify user inputs and block malicious payloads.
+
+rails:
+  input:
+    flows:
+      - check jailbreak
+      - check off topic
