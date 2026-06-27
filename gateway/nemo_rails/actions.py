@@ -7,7 +7,10 @@ every request, this module implements the Colang logic natively in Python
 as a fast, synchronous pre-processor.
 """
 import re
+import logging
 from typing import Optional
+
+logger = logging.getLogger("finguard.nemo")
 
 # ── Mirroring main.co Definitions ────────────────────────────
 JAILBREAK_PATTERNS = [
@@ -37,6 +40,7 @@ def check_input(prompt: str) -> GuardrailDecision:
         
     for pattern in JAILBREAK_PATTERNS:
         if re.search(pattern, prompt):
+            logger.warning(f"NeMo Guardrail Blocked Prompt. Pattern matched: {pattern}")
             return GuardrailDecision(
                 is_safe=False,
                 block_message="SECURITY ALERT: Jailbreak attempt detected. Input blocked by NeMo Guardrails."

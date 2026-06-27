@@ -10,6 +10,18 @@ Phase 3: Security Gateway active.
 import os
 import time
 import tempfile
+import logging
+
+# ── Configure Logging ────────────────────────────────────────
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.FileHandler("security_events.log"),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger("finguard.api")
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse
