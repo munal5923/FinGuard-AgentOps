@@ -2,9 +2,11 @@
 FinGuard AgentOps — FastAPI Application
 Central API server hosting agent endpoints and health checks.
 
-Phase 3: Security Gateway active.
+Phase 4: MLOps Observability active.
+  - OpenTelemetry distributed tracing on all endpoints
   - JWT + OPA authorization on Fraud Detector tools
   - Presidio PII scanning on all agent outputs
+  - NeMo Guardrails input interception
 """
 
 import os
@@ -35,6 +37,7 @@ from shared.models import AgentHealthResponse
 from shared.simulated_db import router as db_router
 from gateway.presidio.scanner import scan_and_redact
 from gateway.nemo_rails.actions import check_input
+from mlops.telemetry import get_tracer, record_security_event, instrument_fastapi
 
 load_dotenv()
 
@@ -50,6 +53,10 @@ START_TIME = time.time()
 # ── Include DB Router ────────────────────────────────────────
 app.include_router(db_router)
 
+# ── OpenTelemetry Auto-Instrumentation ───────────────────────
+instrument_fastapi(app)
+tracer = get_tracer("finguard.api")
+
 # ── Build Agents ─────────────────────────────────────────────
 loan_agent = build_loan_agent()
 fraud_agent = build_fraud_agent()
@@ -63,9 +70,9 @@ def root():
     return {
         "service": "FinGuard AgentOps",
         "version": "0.1.0",
-        "phase": 3,
+        "phase": 4,
         "agents": ["loan_analyst", "fraud_detector", "kyc_agent", "support_agent"],
-        "security_features": ["jwt_auth", "opa_policies", "presidio_pii_scan"],
+        "security_features": ["jwt_auth", "opa_policies", "presidio_pii_scan", "nemo_guardrails", "opentelemetry"],
     }
 
 
@@ -139,25 +146,39 @@ async def analyze_fraud(request: FraudRequest):
     # ── NeMo Guardrails: Input Check ──
     guardrail = check_input(request.transaction_details)
     if not guardrail.is_safe:
+        with tracer.start_as_current_span("nemo_block.fraud_detector") as span:
+            record_security_event(span, "nemo.jailbreak_blocked", {
+                "agent": "fraud_detector",
+                "input_snippet": request.transaction_details[:100],
+            })
         raise HTTPException(status_code=403, detail=guardrail.block_message)
-        
-    try:
-        result = fraud_agent.invoke({
-            "messages": [],
-            "account_id": request.account_id,
-            "transaction_details": request.transaction_details
-        })
-        raw_result = result["messages"][-1].content
-        redacted_result = scan_and_redact(raw_result)
-        return {
-            "agent": "fraud_detector",
-            "model": "gpt-4o",
-            "security_gateway": True,
-            "pii_redacted": raw_result != redacted_result,
-            "result": redacted_result
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Agent error: {str(e)}")
+
+    with tracer.start_as_current_span("agent.fraud_detector") as span:
+        span.set_attribute("agent.name", "fraud_detector")
+        span.set_attribute("agent.model", "gpt-4o")
+        span.set_attribute("request.account_id", request.account_id)
+        try:
+            result = fraud_agent.invoke({
+                "messages": [],
+                "account_id": request.account_id,
+                "transaction_details": request.transaction_details
+            })
+            raw_result = result["messages"][-1].content
+            redacted_result = scan_and_redact(raw_result)
+            if raw_result != redacted_result:
+                record_security_event(span, "presidio.pii_redacted", {
+                    "agent": "fraud_detector",
+                })
+            return {
+                "agent": "fraud_detector",
+                "model": "gpt-4o",
+                "security_gateway": True,
+                "pii_redacted": raw_result != redacted_result,
+                "result": redacted_result
+            }
+        except Exception as e:
+            span.set_attribute("error", True)
+            raise HTTPException(status_code=500, detail=f"Agent error: {str(e)}")
 
 @app.get("/agents/fraud-detector/health", response_model=AgentHealthResponse)
 def fraud_detector_health():
@@ -185,26 +206,40 @@ async def chat_kyc(request: KYCChatRequest):
     # ── NeMo Guardrails: Input Check ──
     guardrail = check_input(request.message)
     if not guardrail.is_safe:
+        with tracer.start_as_current_span("nemo_block.kyc_agent") as span:
+            record_security_event(span, "nemo.jailbreak_blocked", {
+                "agent": "kyc_agent",
+                "input_snippet": request.message[:100],
+            })
         raise HTTPException(status_code=403, detail=guardrail.block_message)
-        
-    try:
-        config = {"configurable": {"thread_id": request.session_id}}
-        result = kyc_agent.invoke(
-            {"messages": [HumanMessage(content=request.message)]}, 
-            config=config
-        )
-        raw_response = result["messages"][-1].content
-        redacted_response = scan_and_redact(raw_response)
-        return {
-            "agent": "kyc_agent",
-            "model": "gpt-4o",
-            "security_gateway": True,
-            "pii_redacted": raw_response != redacted_response,
-            "session_id": request.session_id,
-            "response": redacted_response
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Agent error: {str(e)}")
+
+    with tracer.start_as_current_span("agent.kyc_agent") as span:
+        span.set_attribute("agent.name", "kyc_agent")
+        span.set_attribute("agent.model", "gpt-4o")
+        span.set_attribute("request.session_id", request.session_id)
+        try:
+            config = {"configurable": {"thread_id": request.session_id}}
+            result = kyc_agent.invoke(
+                {"messages": [HumanMessage(content=request.message)]}, 
+                config=config
+            )
+            raw_response = result["messages"][-1].content
+            redacted_response = scan_and_redact(raw_response)
+            if raw_response != redacted_response:
+                record_security_event(span, "presidio.pii_redacted", {
+                    "agent": "kyc_agent",
+                })
+            return {
+                "agent": "kyc_agent",
+                "model": "gpt-4o",
+                "security_gateway": True,
+                "pii_redacted": raw_response != redacted_response,
+                "session_id": request.session_id,
+                "response": redacted_response
+            }
+        except Exception as e:
+            span.set_attribute("error", True)
+            raise HTTPException(status_code=500, detail=f"Agent error: {str(e)}")
 
 @app.get("/agents/kyc-agent/health", response_model=AgentHealthResponse)
 def kyc_agent_health():
@@ -230,25 +265,39 @@ async def resolve_support_ticket(request: SupportRequest):
     # ── NeMo Guardrails: Input Check ──
     guardrail = check_input(request.customer_issue)
     if not guardrail.is_safe:
+        with tracer.start_as_current_span("nemo_block.support_agent") as span:
+            record_security_event(span, "nemo.jailbreak_blocked", {
+                "agent": "support_agent",
+                "input_snippet": request.customer_issue[:100],
+            })
         raise HTTPException(status_code=403, detail=guardrail.block_message)
-        
-    try:
-        result = support_agent.invoke({
-            "messages": [],
-            "ticket_id": request.ticket_id,
-            "customer_issue": request.customer_issue
-        })
-        raw_result = result["messages"][-1].content
-        redacted_result = scan_and_redact(raw_result)
-        return {
-            "agent": "support_agent",
-            "model": "gpt-4o",
-            "security_gateway": True,
-            "pii_redacted": raw_result != redacted_result,
-            "result": redacted_result
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Agent error: {str(e)}")
+
+    with tracer.start_as_current_span("agent.support_agent") as span:
+        span.set_attribute("agent.name", "support_agent")
+        span.set_attribute("agent.model", "gpt-4o")
+        span.set_attribute("request.ticket_id", request.ticket_id)
+        try:
+            result = support_agent.invoke({
+                "messages": [],
+                "ticket_id": request.ticket_id,
+                "customer_issue": request.customer_issue
+            })
+            raw_result = result["messages"][-1].content
+            redacted_result = scan_and_redact(raw_result)
+            if raw_result != redacted_result:
+                record_security_event(span, "presidio.pii_redacted", {
+                    "agent": "support_agent",
+                })
+            return {
+                "agent": "support_agent",
+                "model": "gpt-4o",
+                "security_gateway": True,
+                "pii_redacted": raw_result != redacted_result,
+                "result": redacted_result
+            }
+        except Exception as e:
+            span.set_attribute("error", True)
+            raise HTTPException(status_code=500, detail=f"Agent error: {str(e)}")
 
 @app.get("/agents/support-agent/health", response_model=AgentHealthResponse)
 def support_agent_health():
@@ -269,4 +318,5 @@ def global_health():
         "uptime_seconds": round(time.time() - START_TIME, 1),
         "active_agents": ["loan_analyst", "fraud_detector", "kyc_agent", "support_agent"],
         "security_gateway": True,
+        "telemetry": "opentelemetry",
     }

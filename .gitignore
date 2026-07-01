@@ -31,3 +31,4 @@ Thumbs.db
 red_team/promptfoo_config/results.json
 red_team/promptfoo_config/.promptfoo/
 tests/
+security_events.log
