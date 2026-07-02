@@ -14,6 +14,7 @@ import logging
 from typing import Optional
 
 from shared.token_issuer import verify_token
+from mlops.metrics import OPA_DENIALS_COUNT
 
 logger = logging.getLogger("finguard.opa")
 
@@ -75,6 +76,7 @@ def evaluate(
         payload = verify_token(token)
     except ValueError as e:
         logger.warning(f"OPA: Token verification failed: {e}")
+        OPA_DENIALS_COUNT.labels(agent_name="unknown", tool_name=tool_name, reason="auth_failure").inc()
         return OPADecision(False, f"BLOCKED: Invalid or expired token — {str(e)}")
     
     agent_role = payload.get("sub", "unknown")

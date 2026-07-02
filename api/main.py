@@ -25,7 +25,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("finguard.api")
 
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
 
@@ -38,6 +38,11 @@ from shared.simulated_db import router as db_router
 from gateway.presidio.scanner import scan_and_redact
 from gateway.nemo_rails.actions import check_input
 from mlops.telemetry import get_tracer, record_security_event, instrument_fastapi
+from mlops.metrics import (
+    API_REQUEST_COUNT, API_REQUEST_LATENCY, NEMO_BLOCKED_COUNT,
+    PRESIDIO_REDACTIONS_COUNT, AGENT_LATENCY, ACTIVE_AGENTS
+)
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 
 load_dotenv()
 
@@ -57,6 +62,24 @@ app.include_router(db_router)
 instrument_fastapi(app)
 tracer = get_tracer("finguard.api")
 
+# ── Prometheus Middleware ────────────────────────────────────
+@app.middleware("http")
+async def prometheus_middleware(request: Request, call_next):
+    start_time = time.time()
+    response = await call_next(request)
+    duration = time.time() - start_time
+    
+    # Exclude the metrics endpoint itself from clogging the stats
+    if request.url.path != "/metrics":
+        API_REQUEST_COUNT.labels(
+            endpoint=request.url.path,
+            method=request.method,
+            status_code=response.status_code
+        ).inc()
+        API_REQUEST_LATENCY.labels(endpoint=request.url.path).observe(duration)
+        
+    return response
+
 # ── Build Agents ─────────────────────────────────────────────
 loan_agent = build_loan_agent()
 fraud_agent = build_fraud_agent()
@@ -67,13 +90,20 @@ support_agent = build_support_agent()
 # ── Root ─────────────────────────────────────────────────────
 @app.get("/")
 def root():
+    ACTIVE_AGENTS.set(4)
     return {
         "service": "FinGuard AgentOps",
         "version": "0.1.0",
         "phase": 4,
         "agents": ["loan_analyst", "fraud_detector", "kyc_agent", "support_agent"],
-        "security_features": ["jwt_auth", "opa_policies", "presidio_pii_scan", "nemo_guardrails", "opentelemetry"],
+        "security_features": ["jwt_auth", "opa_policies", "presidio_pii_scan", "nemo_guardrails", "opentelemetry", "prometheus"],
     }
+
+# ── Metrics Endpoint ─────────────────────────────────────────
+@app.get("/metrics")
+def metrics():
+    """Exposes Prometheus metrics."""
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 # ── Loan Analyst Endpoint ────────────────────────────────────
@@ -151,24 +181,30 @@ async def analyze_fraud(request: FraudRequest):
                 "agent": "fraud_detector",
                 "input_snippet": request.transaction_details[:100],
             })
+        NEMO_BLOCKED_COUNT.labels(agent_name="fraud_detector").inc()
         raise HTTPException(status_code=403, detail=guardrail.block_message)
 
     with tracer.start_as_current_span("agent.fraud_detector") as span:
         span.set_attribute("agent.name", "fraud_detector")
         span.set_attribute("agent.model", "gpt-4o")
         span.set_attribute("request.account_id", request.account_id)
+        
+        start_time = time.time()
         try:
             result = fraud_agent.invoke({
                 "messages": [],
                 "account_id": request.account_id,
                 "transaction_details": request.transaction_details
             })
+            AGENT_LATENCY.labels(agent_name="fraud_detector", model="gpt-4o").observe(time.time() - start_time)
+            
             raw_result = result["messages"][-1].content
             redacted_result = scan_and_redact(raw_result)
             if raw_result != redacted_result:
                 record_security_event(span, "presidio.pii_redacted", {
                     "agent": "fraud_detector",
                 })
+                PRESIDIO_REDACTIONS_COUNT.labels(agent_name="fraud_detector").inc()
             return {
                 "agent": "fraud_detector",
                 "model": "gpt-4o",
@@ -211,24 +247,30 @@ async def chat_kyc(request: KYCChatRequest):
                 "agent": "kyc_agent",
                 "input_snippet": request.message[:100],
             })
+        NEMO_BLOCKED_COUNT.labels(agent_name="kyc_agent").inc()
         raise HTTPException(status_code=403, detail=guardrail.block_message)
 
     with tracer.start_as_current_span("agent.kyc_agent") as span:
         span.set_attribute("agent.name", "kyc_agent")
         span.set_attribute("agent.model", "gpt-4o")
         span.set_attribute("request.session_id", request.session_id)
+        
+        start_time = time.time()
         try:
             config = {"configurable": {"thread_id": request.session_id}}
             result = kyc_agent.invoke(
                 {"messages": [HumanMessage(content=request.message)]}, 
                 config=config
             )
+            AGENT_LATENCY.labels(agent_name="kyc_agent", model="gpt-4o").observe(time.time() - start_time)
+            
             raw_response = result["messages"][-1].content
             redacted_response = scan_and_redact(raw_response)
             if raw_response != redacted_response:
                 record_security_event(span, "presidio.pii_redacted", {
                     "agent": "kyc_agent",
                 })
+                PRESIDIO_REDACTIONS_COUNT.labels(agent_name="kyc_agent").inc()
             return {
                 "agent": "kyc_agent",
                 "model": "gpt-4o",
@@ -270,24 +312,30 @@ async def resolve_support_ticket(request: SupportRequest):
                 "agent": "support_agent",
                 "input_snippet": request.customer_issue[:100],
             })
+        NEMO_BLOCKED_COUNT.labels(agent_name="support_agent").inc()
         raise HTTPException(status_code=403, detail=guardrail.block_message)
 
     with tracer.start_as_current_span("agent.support_agent") as span:
         span.set_attribute("agent.name", "support_agent")
         span.set_attribute("agent.model", "gpt-4o")
         span.set_attribute("request.ticket_id", request.ticket_id)
+        
+        start_time = time.time()
         try:
             result = support_agent.invoke({
                 "messages": [],
                 "ticket_id": request.ticket_id,
                 "customer_issue": request.customer_issue
             })
+            AGENT_LATENCY.labels(agent_name="support_agent", model="gpt-4o").observe(time.time() - start_time)
+            
             raw_result = result["messages"][-1].content
             redacted_result = scan_and_redact(raw_result)
             if raw_result != redacted_result:
                 record_security_event(span, "presidio.pii_redacted", {
                     "agent": "support_agent",
                 })
+                PRESIDIO_REDACTIONS_COUNT.labels(agent_name="support_agent").inc()
             return {
                 "agent": "support_agent",
                 "model": "gpt-4o",
