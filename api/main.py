@@ -42,6 +42,7 @@ from mlops.metrics import (
     API_REQUEST_COUNT, API_REQUEST_LATENCY, NEMO_BLOCKED_COUNT,
     PRESIDIO_REDACTIONS_COUNT, AGENT_LATENCY, ACTIVE_AGENTS
 )
+from mlops.mlflow_tracker import init_llm_diagnostics
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 
 load_dotenv()
@@ -61,6 +62,9 @@ app.include_router(db_router)
 # ── OpenTelemetry Auto-Instrumentation ───────────────────────
 instrument_fastapi(app)
 tracer = get_tracer("finguard.api")
+
+# ── MLflow Diagnostics ───────────────────────────────────────
+init_llm_diagnostics()
 
 # ── Prometheus Middleware ────────────────────────────────────
 @app.middleware("http")
@@ -96,7 +100,7 @@ def root():
         "version": "0.1.0",
         "phase": 4,
         "agents": ["loan_analyst", "fraud_detector", "kyc_agent", "support_agent"],
-        "security_features": ["jwt_auth", "opa_policies", "presidio_pii_scan", "nemo_guardrails", "opentelemetry", "prometheus"],
+        "security_features": ["jwt_auth", "opa_policies", "presidio_pii_scan", "nemo_guardrails", "opentelemetry", "prometheus", "mlflow"],
     }
 
 # ── Metrics Endpoint ─────────────────────────────────────────
