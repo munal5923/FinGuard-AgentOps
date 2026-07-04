@@ -1,0 +1,56 @@
+import json
+
+dashboard = {
+  "title": "FinGuard Security & Observability",
+  "timezone": "browser",
+  "refresh": "5s",
+  "schemaVersion": 38,
+  "panels": [
+    {
+      "title": "Active Agents",
+      "type": "stat",
+      "gridPos": {"h": 4, "w": 4, "x": 0, "y": 0},
+      "targets": [{"expr": "finguard_active_agents"}],
+      "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "auto"}
+    },
+    {
+      "title": "Total Prompt Injections Blocked (NeMo)",
+      "type": "bargauge",
+      "gridPos": {"h": 4, "w": 10, "x": 4, "y": 0},
+      "targets": [{"expr": "sum(finguard_security_nemo_blocks_total) by (agent_name)", "legendFormat": "{{agent_name}}"}],
+      "options": {"displayMode": "gradient", "orientation": "horizontal"}
+    },
+    {
+      "title": "Total PII Redactions (Presidio)",
+      "type": "bargauge",
+      "gridPos": {"h": 4, "w": 10, "x": 14, "y": 0},
+      "targets": [{"expr": "sum(finguard_security_presidio_redactions_total) by (agent_name)", "legendFormat": "{{agent_name}}"}],
+      "options": {"displayMode": "gradient", "orientation": "horizontal"}
+    },
+    {
+      "title": "API Request Volume (per min)",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+      "targets": [{"expr": "rate(finguard_api_requests_total[1m])", "legendFormat": "{{endpoint}} ({{status_code}})"}],
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}}
+    },
+    {
+      "title": "Agent Latency (Seconds)",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+      "targets": [{"expr": "rate(finguard_agent_invocation_duration_seconds_sum[1m]) / rate(finguard_agent_invocation_duration_seconds_count[1m])", "legendFormat": "{{agent_name}}"}],
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}}
+    },
+    {
+      "title": "OPA Authorization Denials (Unauthorized Tool Access)",
+      "type": "table",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 12},
+      "targets": [{"expr": "finguard_security_opa_denials_total", "format": "table", "instant": True}]
+    }
+  ]
+}
+
+with open("/home/munal/Desktop/FinGuard/infrastructure/grafana/dashboards/finguard_security.json", "w") as f:
+    json.dump(dashboard, f, indent=2)
+
+print("Dashboard JSON generated.")
