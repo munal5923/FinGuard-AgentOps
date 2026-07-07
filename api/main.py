@@ -90,6 +90,17 @@ fraud_agent = build_fraud_agent()
 kyc_agent = build_kyc_agent()
 support_agent = build_support_agent()
 
+from orchestrator.registry import registry
+from orchestrator.meta_agent import orchestrator
+
+def check_agent_status(agent_name: str):
+    """Check if an agent is isolated by the ASMO orchestrator."""
+    if registry.get_status(agent_name) == "isolated":
+        raise HTTPException(
+            status_code=503, 
+            detail=f"Agent '{agent_name}' is currently isolated for security or health reasons."
+        )
+
 
 # ── Root ─────────────────────────────────────────────────────
 @app.get("/")
@@ -121,6 +132,8 @@ async def assess_loan(file: UploadFile = File(...)):
     """
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are accepted")
+
+    check_agent_status("loan_analyst")
 
     # Write uploaded file to a temp location
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
@@ -177,6 +190,8 @@ async def analyze_fraud(request: FraudRequest):
     Analyze a transaction for fraud.
     This agent has tools to flag accounts and approve payouts.
     """
+    check_agent_status("fraud_detector")
+    
     # ── NeMo Guardrails: Input Check ──
     guardrail = check_input(request.transaction_details)
     if not guardrail.is_safe:
@@ -243,6 +258,8 @@ async def chat_kyc(request: KYCChatRequest):
     """
     Stateful conversational endpoint for KYC verification.
     """
+    check_agent_status("kyc_agent")
+
     # ── NeMo Guardrails: Input Check ──
     guardrail = check_input(request.message)
     if not guardrail.is_safe:
@@ -308,6 +325,8 @@ async def resolve_support_ticket(request: SupportRequest):
     """
     Analyze and resolve a customer support ticket.
     """
+    check_agent_status("support_agent")
+
     # ── NeMo Guardrails: Input Check ──
     guardrail = check_input(request.customer_issue)
     if not guardrail.is_safe:
@@ -372,3 +391,49 @@ def global_health():
         "security_gateway": True,
         "telemetry": "opentelemetry",
     }
+
+
+# ── ASMO Orchestrator Endpoints ──────────────────────────────
+@app.post("/orchestrator/kill-switch/{agent_name}")
+def kill_switch(agent_name: str, reason: str = "Manual kill switch triggered"):
+    """Immediately isolate an agent. Callable from the Grafana dashboard."""
+    if agent_name not in registry.agents:
+        raise HTTPException(status_code=404, detail="Agent not found")
+        
+    result = orchestrator.invoke({
+        "event_type": "manual_intervention",
+        "agent_name": agent_name,
+        "severity": "critical",
+        "detail": reason,
+        "action_taken": "",
+        "resolved": False,
+    })
+    return {"agent": agent_name, "status": "isolated", "resolved": result["resolved"]}
+
+
+@app.post("/orchestrator/alert")
+def receive_alert(alert: dict):
+    """Alertmanager webhook endpoint — receives Prometheus alerts."""
+    for alert_item in alert.get("alerts", []):
+        agent_name = alert_item.get("labels", {}).get("agent_name", "unknown")
+        alert_name = alert_item.get("labels", {}).get("alertname", "")
+        
+        severity = "high" if "Critical" in alert_name else "medium"
+        event_type = "health_alert" if "Latency" in alert_name or "Health" in alert_name else "security_alert"
+        
+        if agent_name in registry.agents:
+            orchestrator.invoke({
+                "event_type": event_type,
+                "agent_name": agent_name,
+                "severity": severity,
+                "detail": f"Prometheus Alert: {alert_name}",
+                "action_taken": "",
+                "resolved": False,
+            })
+    return {"status": "processed"}
+
+
+@app.get("/orchestrator/registry")
+def get_registry():
+    """View current state of all agents — used by the Grafana dashboard."""
+    return registry.to_dict()
