@@ -11,9 +11,9 @@ from typing import TypedDict, Annotated, Sequence
 import operator
 
 from dotenv import load_dotenv
-from langchain_openai import ChatOpenAI
-from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import tool
+from mlops.self_healing import build_resilient_llm
 from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
 
@@ -37,9 +37,13 @@ def resolve_ticket(ticket_id: str, resolution: str) -> str:
 tools = [search_policies, resolve_ticket]
 tool_node = ToolNode(tools)
 
-# ── LLM Setup ────────────────────────────────────────────────
-llm = ChatOpenAI(model="gpt-4o", temperature=0)
-llm_with_tools = llm.bind_tools(tools)
+# ── LLM Setup (Self-Healing) ─────────────────────────────────
+llm_with_tools = build_resilient_llm(
+    tools=tools,
+    primary_model="gpt-4o",
+    fallback_model="gpt-4o-mini",
+    temperature=0
+)
 
 # ── Agent State ──────────────────────────────────────────────
 class SupportState(TypedDict):

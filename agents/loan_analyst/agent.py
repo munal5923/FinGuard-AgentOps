@@ -17,15 +17,18 @@ from typing import TypedDict, Optional
 import fitz  # PyMuPDF
 from dotenv import load_dotenv
 from langgraph.graph import StateGraph, END
-from openai import OpenAI
+from mlops.self_healing import build_resilient_llm
 
 from shared.vector_store import query_policies
 
 load_dotenv()
 
-# ── LLM Client ──────────────────────────────────────────────
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-MODEL = "gpt-4o"
+# ── LLM Setup (Self-Healing) ─────────────────────────────────
+llm = build_resilient_llm(
+    primary_model="gpt-4o",
+    fallback_model="gpt-4o-mini",
+    temperature=0
+)
 
 
 # ── Agent State ──────────────────────────────────────────────
@@ -93,16 +96,14 @@ def make_decision_node(state: LoanState) -> dict:
         f"Provide your eligibility assessment as a JSON object."
     )
 
-    response = client.chat.completions.create(
-        model=MODEL,
-        temperature=0,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-    )
+    from langchain_core.messages import SystemMessage, HumanMessage
+    
+    response = llm.invoke([
+        SystemMessage(content=system_prompt),
+        HumanMessage(content=user_prompt),
+    ])
 
-    content = response.choices[0].message.content.strip()
+    content = response.content.strip()
 
     # Parse the JSON from the response
     try:

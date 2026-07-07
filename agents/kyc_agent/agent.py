@@ -12,14 +12,19 @@ import operator
 
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
+from mlops.self_healing import build_resilient_llm
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver
 
 load_dotenv()
 
-# ── LLM Setup ────────────────────────────────────────────────
-llm = ChatOpenAI(model="gpt-4o", temperature=0)
+# ── LLM Setup (Self-Healing) ─────────────────────────────────
+llm = build_resilient_llm(
+    primary_model="gpt-4o",
+    fallback_model="gpt-4o-mini",
+    temperature=0
+)
 
 # ── Agent State ──────────────────────────────────────────────
 class KYCState(TypedDict):
