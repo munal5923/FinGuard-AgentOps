@@ -21,6 +21,8 @@ from langchain_core.tools import tool
 from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
 
+from mlops.self_healing import build_resilient_llm
+
 load_dotenv()
 
 # ── Authorization Imports ────────────────────────────────────
@@ -99,9 +101,13 @@ def approve_payout(account_id: str, amount: float) -> str:
 tools = [read_account, flag_account, approve_payout]
 tool_node = ToolNode(tools)
 
-# ── LLM Setup ────────────────────────────────────────────────
-llm = ChatOpenAI(model="gpt-4o", temperature=0)
-llm_with_tools = llm.bind_tools(tools)
+# ── LLM Setup (Self-Healing) ─────────────────────────────────
+llm_with_tools = build_resilient_llm(
+    tools=tools,
+    primary_model="gpt-4o",
+    fallback_model="gpt-4o-mini",
+    temperature=0
+)
 
 # ── Agent State ──────────────────────────────────────────────
 class FraudState(TypedDict):

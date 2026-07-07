@@ -14,16 +14,23 @@ dashboard = {
       "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "auto"}
     },
     {
+      "title": "LLM Fallbacks (Self-Healing)",
+      "type": "stat",
+      "gridPos": {"h": 4, "w": 4, "x": 4, "y": 0},
+      "targets": [{"expr": "sum(finguard_llm_fallbacks_total)"}],
+      "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "auto"}
+    },
+    {
       "title": "Total Prompt Injections Blocked (NeMo)",
       "type": "bargauge",
-      "gridPos": {"h": 4, "w": 10, "x": 4, "y": 0},
+      "gridPos": {"h": 4, "w": 8, "x": 8, "y": 0},
       "targets": [{"expr": "sum(finguard_security_nemo_blocks_total) by (agent_name)", "legendFormat": "{{agent_name}}"}],
       "options": {"displayMode": "gradient", "orientation": "horizontal"}
     },
     {
       "title": "Total PII Redactions (Presidio)",
       "type": "bargauge",
-      "gridPos": {"h": 4, "w": 10, "x": 14, "y": 0},
+      "gridPos": {"h": 4, "w": 8, "x": 16, "y": 0},
       "targets": [{"expr": "sum(finguard_security_presidio_redactions_total) by (agent_name)", "legendFormat": "{{agent_name}}"}],
       "options": {"displayMode": "gradient", "orientation": "horizontal"}
     },
@@ -53,4 +60,4 @@ dashboard = {
 with open("/home/munal/Desktop/FinGuard/infrastructure/grafana/dashboards/finguard_security.json", "w") as f:
     json.dump(dashboard, f, indent=2)
 
-print("Dashboard JSON generated.")
+print("Dashboard JSON updated with Self-Healing panel.")

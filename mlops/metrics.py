@@ -49,3 +49,9 @@ ACTIVE_AGENTS = Gauge(
     "finguard_active_agents",
     "Current number of healthy agents available to serve requests",
 )
+
+LLM_FALLBACK_COUNT = Counter(
+    "finguard_llm_fallbacks_total",
+    "Total number of times the self-healing orchestrator hot-swapped the model due to failure",
+    ["primary_model", "fallback_model"]
+)

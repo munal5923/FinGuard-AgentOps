@@ -25,12 +25,32 @@
       }
     },
     {
+      "title": "LLM Fallbacks (Self-Healing)",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 4,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "sum(finguard_llm_fallbacks_total)"
+        }
+      ],
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      }
+    },
+    {
       "title": "Total Prompt Injections Blocked (NeMo)",
       "type": "bargauge",
       "gridPos": {
         "h": 4,
-        "w": 10,
-        "x": 4,
+        "w": 8,
+        "x": 8,
         "y": 0
       },
       "targets": [
@@ -49,8 +69,8 @@
       "type": "bargauge",
       "gridPos": {
         "h": 4,
-        "w": 10,
-        "x": 14,
+        "w": 8,
+        "x": 16,
         "y": 0
       },
       "targets": [
