@@ -1,0 +1,8 @@
+apiVersion: v2
+name: finguard
+description: FinGuard AgentOps — Secure Multi-Agent FinTech Platform (Helm Chart)
+type: application
+version: 1.0.0
+appVersion: "0.1.0"
+maintainers:
+  - name: Muhammad Nasir

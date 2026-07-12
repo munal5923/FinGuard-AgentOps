@@ -1,0 +1,25 @@
+# ──────────────────────────────────────────────────────────────
+# FinGuard API — Horizontal Pod Autoscaler
+# Scales API replicas based on CPU utilization.
+# ──────────────────────────────────────────────────────────────
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: finguard-api-hpa
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: finguard-api
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: finguard-api
+  minReplicas: {{ .Values.api.replicas }}
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

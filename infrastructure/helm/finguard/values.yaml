@@ -1,0 +1,52 @@
+# ──────────────────────────────────────────────────────────────
+# FinGuard AgentOps — Helm Values
+# Override these per-environment (dev, staging, prod).
+# ──────────────────────────────────────────────────────────────
+
+namespace: finguard
+
+# ── FinGuard API ─────────────────────────────────────────────
+api:
+  image: finguard/api:latest
+  replicas: 2
+  port: 8000
+  metricsPort: 8000
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "250m"
+    limits:
+      memory: "1Gi"
+      cpu: "500m"
+  env:
+    OPENAI_API_KEY: ""            # Injected via Kubernetes Secret in production
+
+# ── Prometheus ───────────────────────────────────────────────
+prometheus:
+  enabled: true
+  image: prom/prometheus:latest
+  port: 9090
+  scrapeInterval: 5s
+  retention: 15d
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "250m"
+
+# ── Grafana ──────────────────────────────────────────────────
+grafana:
+  enabled: true
+  image: grafana/grafana:latest
+  port: 3000
+  adminUser: admin
+  adminPassword: finguard
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "256Mi"
+      cpu: "200m"

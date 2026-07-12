@@ -1,0 +1,20 @@
+# ──────────────────────────────────────────────────────────────
+# FinGuard API — Service
+# Exposes the FastAPI app within the cluster.
+# ──────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: finguard-api
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: finguard-api
+spec:
+  type: ClusterIP
+  selector:
+    app: finguard-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: {{ .Values.api.port }}
+      protocol: TCP

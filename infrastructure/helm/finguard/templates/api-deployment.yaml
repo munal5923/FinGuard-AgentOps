@@ -1,0 +1,59 @@
+# ──────────────────────────────────────────────────────────────
+# FinGuard API — Deployment
+# Runs the FastAPI server with all agents, security gateway,
+# and ASMO orchestrator endpoints.
+# ──────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: finguard-api
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: finguard-api
+    component: api
+spec:
+  replicas: {{ .Values.api.replicas }}
+  selector:
+    matchLabels:
+      app: finguard-api
+  template:
+    metadata:
+      labels:
+        app: finguard-api
+        component: api
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "{{ .Values.api.metricsPort }}"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+        - name: finguard-api
+          image: {{ .Values.api.image }}
+          ports:
+            - containerPort: {{ .Values.api.port }}
+              name: http
+          env:
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: finguard-secrets
+                  key: openai-api-key
+          resources:
+            requests:
+              memory: {{ .Values.api.resources.requests.memory }}
+              cpu: {{ .Values.api.resources.requests.cpu }}
+            limits:
+              memory: {{ .Values.api.resources.limits.memory }}
+              cpu: {{ .Values.api.resources.limits.cpu }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
