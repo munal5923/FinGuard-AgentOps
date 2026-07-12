@@ -1,0 +1,4 @@
+# This file acts as the primary variable input for PromptFoo.
+# Since we are passing the prompt directly in the vars section of the YAML,
+# we just echo the variable here so PromptFoo can inject it.
+{{prompt}}
