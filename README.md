@@ -24,7 +24,7 @@ FinGuard AgentOps is a production-grade platform that treats AI agents as **zero
 
 The project demonstrates how to safely deploy autonomous LLM agents in high-risk environments — where prompt injection, data exfiltration, and hallucination are not theoretical risks, but engineering constraints that must be solved at the infrastructure layer.
 
-> **Note:** This is an active research project. The core platform (Phases 1–4) is fully implemented and functional. Additional phases covering adversarial red-teaming, Kubernetes deployment, and advanced orchestration are currently in development. See the [Roadmap](#roadmap) for details.
+> **Note:** This is an active research project. The core platform (Phases 1–5), including the ASMO orchestrator and Kubernetes deployment templates, is fully implemented and functional. Additional phases covering adversarial red-teaming and cascading failure simulation are currently in development. See the [Roadmap](#roadmap) for details.
 
 ---
 
@@ -195,7 +195,7 @@ Open `http://localhost:5000` to inspect raw LLM prompts, tool schemas, token usa
 | **Tracing** | OpenTelemetry |
 | **Metrics** | Prometheus, Grafana |
 | **LLM Diagnostics** | MLflow |
-| **Infrastructure** | Docker Compose |
+| **Infrastructure** | Docker Compose, Kubernetes (Helm) |
 
 ---
 
@@ -209,10 +209,9 @@ FinGuard is an ongoing research project. The following phases are currently impl
 | **Phase 2** | Database tooling and simulated FinTech environment | ✅ Complete |
 | **Phase 3** | Defense-in-depth security gateway (NeMo, OPA, Presidio, Pydantic) | ✅ Complete |
 | **Phase 4** | MLOps observability and self-healing (OpenTelemetry, Prometheus, Grafana, MLflow) | ✅ Complete |
-| **Phase 5** | Adversarial red-teaming with PromptFoo — automated attack simulation and regression testing | 🔧 In Progress |
-| **Phase 6** | ASMO Orchestrator — centralized agent lifecycle management, credential rotation, and kill-switch capability | 📋 Planned |
-| **Phase 7** | Kubernetes deployment with Helm charts, horizontal pod autoscaling, and production-grade secret management | 📋 Planned |
-| **Phase 8** | Multi-model routing — cost-optimized LLM selection based on task complexity and latency budgets | 📋 Planned |
+| **Phase 5** | ASMO Orchestrator & Kubernetes Deployment (Helm charts, HPA, Kill-Switch) | ✅ Complete |
+| **Phase 6** | The Red Team Engine — Automated adversarial testing (PromptFoo) and quality metrics (DeepEval) | 🔧 In Progress |
+| **Phase 7** | Cascading Failure Simulation — Research study measuring poisoned memory propagation across multi-agent workflows | 📋 Planned |
 
 Contributions, feedback, and discussions are welcome. If you are researching LLM security in production systems, feel free to open an issue or reach out.
 
